@@ -198,6 +198,9 @@ void updateDisplay() {
     case displayRowOffset:
       paintRowOffset();
       break;
+    case displayColOffset:
+      paintColOffset();
+      break;
     case displayGuitarTuning:
       paintGuitarTuning();
       break;
@@ -1217,6 +1220,11 @@ void paintRowOffset() {
   }
 }
 
+void paintColOffset() {
+  clearDisplay();
+  paintNumericDataDisplay(globalColor, Global.colOffset, 0, false);
+}
+
 void paintGuitarTuning() {
   clearDisplay();
 
@@ -1610,6 +1618,11 @@ void paintGlobalSettingsDisplay() {
         lightLed(1, 2);
         displayActiveNotes();
         break;
+    }
+
+    if (Global.colOffset != 1)
+    {
+      setLed(5, 2, globalAltColor, cellOn);
     }
 
     switch (Global.rowOffset) {

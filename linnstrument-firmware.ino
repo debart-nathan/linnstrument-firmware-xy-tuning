@@ -116,6 +116,8 @@ byte NUMROWS = 8;                    // number of touch sensor rows
 #define ROWOFFSET_GUITAR           0x0d
 #define ROWOFFSET_ZERO             0x7f
 
+#define COLOFFSET_UNDEF            -128
+
 #define LED_FLASH_DELAY  50000        // the time before a led is turned off when flashing or pulsing, in microseconds
 
 #define DEFAULT_MAINLOOP_DIVIDER      2
@@ -479,6 +481,7 @@ enum DisplayMode {
   displaySleepConfig,
   displaySplitHandedness,
   displayRowOffset,
+  displayColOffset,
   displayGuitarTuning,
   displayMIDIThrough,
   displaySequencerProjects,
@@ -745,6 +748,8 @@ struct GlobalSettings {
   byte activeNotes;                          // controls which collection of note lights presets is active
   int mainNotes[12];                         // bitmask array that determines which notes receive "main" lights
   int accentNotes[12];                       // bitmask array that determines which notes receive accent lights (octaves, white keys, black keys, etc.)
+  signed char colOffset;
+  signed char colOffsetSaved;
   byte rowOffset;                            // interval between rows. 0 = no overlap, 1-12 = interval, 13 = guitar
   signed char customRowOffset;               // the custom row offset that can be configured at the location of the octave setting
   byte guitarTuning[MAXROWS];                // the notes used for each row for the guitar tuning, 0-127

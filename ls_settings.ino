@@ -483,6 +483,8 @@ void initializePresetSettings() {
     g.currentPerSplit = LEFT;
 
     g.rowOffset = 5;
+    g.colOffset = 1;
+    g.colOffsetSaved = COLOFFSET_UNDEF;
     g.customRowOffset = 12;
     g.velocitySensitivity = velocityMedium;
     g.minForVelocity = DEFAULT_MIN_VELOCITY;
@@ -2043,7 +2045,15 @@ void handleRowOffsetNewTouch() {
   handleNumericDataNewTouchCol(Global.customRowOffset, -17, 16, true);
 }
 
+void handleColOffsetNewTouch() {
+  handleNumericDataNewTouchCol(Global.colOffset, -16, 16, true);
+}
+
 void handleRowOffsetRelease() {
+  handleNumericDataReleaseCol(false);
+}
+
+void handleColOffsetRelease() {
   handleNumericDataReleaseCol(false);
 }
 
@@ -2543,12 +2553,7 @@ void handleGlobalSettingNewTouch() {
             }
             break;
           case 2:
-            if (Global.rowOffset == 7) {
-              Global.rowOffset = ROWOFFSET_ZERO;
-            }
-            else {
-              Global.rowOffset = 7;
-            }
+            // handle at release (colOffset)
             break;
           case 3:
             if (Global.rowOffset == ROWOFFSET_NOOVERLAP) {
@@ -2782,6 +2787,13 @@ void handleGlobalSettingNewTouch() {
           break;
       }
       break;
+    
+    case 5:
+      switch (sensorRow) {
+        case 2:
+          setLed(sensorCol, sensorRow, globalAltColor, cellSlowPulse);
+      }
+      break;
 
     case 6:
       switch (sensorRow) {
@@ -2880,6 +2892,16 @@ void handleGlobalSettingHold() {
           case 3:
             resetNumericDataChange();
             setDisplayMode(displaySplitHandedness);
+            updateDisplay();
+            break;
+        }
+        break;
+
+      case 5:
+        switch (sensorRow) {
+          case 2:
+            resetNumericDataChange();
+            setDisplayMode(displayColOffset);
             updateDisplay();
             break;
         }
@@ -3010,6 +3032,21 @@ void handleGlobalSettingRelease() {
   if (sensorCol == 1 && sensorRow == 3 &&
       ensureCellBeforeHoldWait(getSplitHandednessColor(), Device.otherHanded ? cellOn : cellOff)) {
     Device.otherHanded = !Device.otherHanded;
+  }
+  else if (sensorCol == 5 && sensorRow == 2 &&
+      ensureCellBeforeHoldWait(globalColor, Global.colOffset != 1 ? cellOn : cellOff)) {
+
+    if (Global.colOffset != 1)
+    {
+      // if colOffset mode activated, turn it off
+      Global.colOffsetSaved = Global.colOffset;
+      Global.colOffset = 1;
+    }
+    else if (Global.colOffsetSaved != COLOFFSET_UNDEF)
+    {
+      // if not activated, but was set before, then activate the old setting
+      Global.colOffset = Global.colOffsetSaved;
+    }
   }
   else if (sensorCol == 6 && sensorRow == 2 &&
       ensureCellBeforeHoldWait(globalColor, Global.rowOffset == ROWOFFSET_OCTAVECUSTOM ? cellOn : cellOff)) {

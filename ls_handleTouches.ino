@@ -639,6 +639,9 @@ void handleNonPlayingTouch() {
     case displayRowOffset:
       handleRowOffsetNewTouch();
       break;
+    case displayColOffset:
+      handleColOffsetNewTouch();
+      break;
     case displayGuitarTuning:
       handleGuitarTuningNewTouch();
       break;
@@ -1565,6 +1568,9 @@ boolean handleNonPlayingRelease() {
       case displayRowOffset:
         handleRowOffsetRelease();
         break;
+      case displayColOffset:
+        handleColOffsetRelease();
+        break;
       case displayGuitarTuning:
         handleGuitarTuningRelease();
         break;
@@ -1917,23 +1923,38 @@ byte getNoteNumber(byte split, byte col, byte row) {
     noteCol = (NUMCOLS - col);
   }
 
-  notenum = determineRowOffsetNote(split, row) + noteCol - 1;
+  notenum = determineRowOffsetNote(split, row) + (noteCol * Global.colOffset) - 1;
 
   return notenum - Split[split].transposeLights;
 }
 
 short determineRowOffsetNote(byte split, byte row) {
-  short lowest = 30;                                  // 30 = F#2, which is 10 semitones below guitar low E (E3/52). High E = E5/76
-
   if (Global.rowOffset <= 12) {                       // if rowOffset is set to between 0 and 12..
-    short offset = Global.rowOffset;
 
-    if (Global.rowOffset == ROWOFFSET_OCTAVECUSTOM) {
-      offset = Global.customRowOffset;
+    short offset = Global.rowOffset == ROWOFFSET_OCTAVECUSTOM ? Global.customRowOffset : Global.rowOffset;
+
+    // choose lowest to minimize disabled notes
+    short range = Global.colOffset * (NUMCOLS - 1) + offset * (NUMROWS - 1);
+    short lowest = 60 - range/2;
+
+    if (lowest < 21)
+    {
+      lowest = 21;
     }
 
-    if (offset < 0) {
-      lowest = 65;
+    if (lowest + range < 21)
+    {
+      lowest = 21 - range;
+    }
+
+    if (lowest > 120)
+    {
+      lowest = 120;
+    }
+    
+    if (lowest + range > 120)
+    {
+      lowest = 120 - range;
     }
 
     if (Global.rowOffset == ROWOFFSET_NOOVERLAP) {    // no overlap mode
@@ -1966,7 +1987,7 @@ short determineRowOffsetNote(byte split, byte row) {
     return Global.guitarTuning[row];
   }
   else {                                              // Global.rowOffset == ROWOFFSET_ZERO, rowOffset is set to zero...
-    return lowest;
+    return 30;                                        // 30 = F#2, which is 10 semitones below guitar low E (E3/52). High E = E5/76
   }
 }
 
