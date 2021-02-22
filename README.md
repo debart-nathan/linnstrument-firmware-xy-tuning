@@ -3,7 +3,7 @@ LinnStrument firmware with XY-tuning
 
 This is an unofficial modification of LinnStrument's firmware, with a flexible way of tuning the keys. You can find about LinnStrument and its official firmware from these pages:
 
-  https://www.rogerlinndesign.com/linnstrument
+  https://www.rogerlinndesign.com/linnstrument <br>
   https://github.com/rogerlinndesign/linnstrument-firmware
 
 The inspiration of this modification can be found in this post:
@@ -17,7 +17,7 @@ The original LinnStument has one parameter for setting the _row offset_, which i
 
 Some people have found it useful to use the LinnStrument turned 90 degrees, so that they can have more rows and achieve a large range comparable to a grand piano. For example, Jesse Washmon's playing piano pieces with LinnStrument:
 
-  https://www.youtube.com/watch?v=KdGFXX-kAig
+  https://www.youtube.com/watch?v=KdGFXX-kAig <br>
   https://www.youtube.com/watch?v=164qLQyt29g
 
 
