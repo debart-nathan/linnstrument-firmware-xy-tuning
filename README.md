@@ -25,7 +25,16 @@ Without changing the firmware, this vertical configuration will need extra softw
 This parameter makes it possible to achieve a large range. In addition to the vertical way of playing, it also allows you to use LinnStrument like a Janko keyboard etc.
 
 
-### Installing the firmware
+### Installing the firmware from binary
+
+To install the pre-built firmware, you can use the Updater app from the updater directory:
+
+  LinnStrument Updater (XY-tuning experiment).app
+
+This should upate the firmware safely, saving the settings etc. This is just the official updater app with the bin file replaced with compiled binary from this branch. To distinguish it from the original firmware, I changed the version number to 223.
+
+
+### Buiding the firmware from source code
 
 You can follow these instructions on LinnStrument's support page for compiling the firmware:
 
