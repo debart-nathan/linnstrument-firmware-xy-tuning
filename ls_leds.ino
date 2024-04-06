@@ -1,7 +1,17 @@
 /*********************************** ls_leds: LinnStrument LEDS ***********************************
-This work is licensed under the Creative Commons Attribution-ShareAlike 3.0 Unported License.
-To view a copy of this license, visit http://creativecommons.org/licenses/by-sa/3.0/
-or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+Copyright 2023 Roger Linn Design (https://www.rogerlinndesign.com)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 ***************************************************************************************************
 These functions handle the low-level communication with LinnStrument's 208 RGB LEDs.
 **************************************************************************************************/
@@ -37,18 +47,14 @@ byte COL_INDEX[MAXCOLS];
 const byte COL_INDEX_200[MAXCOLS] = {0, 1, 6, 11, 16, 21, 2, 7, 12, 17, 22, 3, 8, 13, 18, 23, 4, 9, 14, 19, 24, 5, 10, 15, 20, 25};
 const byte COL_INDEX_128[MAXCOLS] = {0, 1, 6, 11, 16, 2, 7, 12, 3, 8, 13, 4, 9, 14, 5, 10, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-// Two buffers of ...
-// A 26 by 8 byte array containing one byte for each LED:
-// bits 4-6: 3 bits to select the color: 0:off, 1:red, 2:yellow, 3:green, 4:cyan, 5:blue, 6:magenta
-// bits 0-2: 0:off, 1: on, 2: pulse
-const unsigned long LED_LAYER_SIZE = MAXCOLS * MAXROWS;
-const unsigned long LED_ARRAY_SIZE = (MAX_LED_LAYERS+1) * LED_LAYER_SIZE;
 // array holding contents of display
 byte leds[2][LED_ARRAY_SIZE];
 byte visibleLeds = 0;
 byte bufferedLeds = 0;
 #define ledBuffered(layer, col, row)  leds[bufferedLeds][layer * LED_LAYER_SIZE + row * MAXCOLS + col]
 #define ledVisible(layer, col, row)  leds[visibleLeds][layer * LED_LAYER_SIZE + row * MAXCOLS + col]
+
+bool ledDisplayEnabled = true;
 
 void initializeLeds() {
   if (LINNMODEL == 200) {
@@ -71,6 +77,54 @@ void initializeLedsLayer(byte layer) {
   memset(&leds[bufferedLeds][layer * LED_LAYER_SIZE], 0, LED_LAYER_SIZE);
 }
 
+int getActiveCustomLedPattern() {
+  return Global.activeNotes - 9;
+}
+
+void loadCustomLedLayer(int pattern)
+{
+  if (pattern < 0 || pattern >= LED_PATTERNS) {
+    if (customLedPatternActive) {
+      memset(&leds[0][LED_LAYER_CUSTOM1 * LED_LAYER_SIZE], 0, LED_LAYER_SIZE);
+      memset(&leds[1][LED_LAYER_CUSTOM1 * LED_LAYER_SIZE], 0, LED_LAYER_SIZE);
+    }
+    customLedPatternActive = false;
+    return;
+  }
+
+  memcpy(&leds[0][LED_LAYER_CUSTOM1 * LED_LAYER_SIZE], &Device.customLeds[pattern][0], LED_LAYER_SIZE);
+  memcpy(&leds[1][LED_LAYER_CUSTOM1 * LED_LAYER_SIZE], &Device.customLeds[pattern][0], LED_LAYER_SIZE);
+  customLedPatternActive = true;
+  lightSettings = 2;
+  completelyRefreshLeds();
+}
+
+void storeCustomLedLayer(int pattern)
+{
+  if (pattern < 0 || pattern >= LED_PATTERNS) {
+    if (customLedPatternActive) {
+      memset(&leds[0][LED_LAYER_CUSTOM1 * LED_LAYER_SIZE], 0, LED_LAYER_SIZE);
+      memset(&leds[1][LED_LAYER_CUSTOM1 * LED_LAYER_SIZE], 0, LED_LAYER_SIZE);
+    }
+    customLedPatternActive = false;
+    return;
+  }
+
+  memcpy(&Device.customLeds[pattern][0], &leds[visibleLeds][LED_LAYER_CUSTOM1 * LED_LAYER_SIZE], LED_LAYER_SIZE);
+  customLedPatternActive = true;
+  lightSettings = 2;
+}
+
+void clearStoredCustomLedLayer(int pattern)
+{
+  if (pattern < 0 || pattern >= LED_PATTERNS) return;
+
+  memset(&Device.customLeds[pattern][0], 0, LED_LAYER_SIZE);
+  if (getActiveCustomLedPattern() == pattern) {
+    loadCustomLedLayer(pattern);
+  }
+}
+
 void startBufferedLeds() {
   bufferedLeds = 1;
   memcpy(leds[bufferedLeds], leds[visibleLeds], LED_ARRAY_SIZE);
@@ -86,23 +140,28 @@ inline byte getCombinedLedData(byte col, byte row) {
   byte layer = MAX_LED_LAYERS;
   do {
     layer -= 1;
+    // when custom LED editor is active, only display those LEDs
+    if (col > 0 && displayMode == displayCustomLedsEditor) {
+      if (layer != LED_LAYER_CUSTOM1) continue;
+      data = ledBuffered(layer, col, row);
+    }
     // don't show the custom layer 1 in user firmware mode
-    if (userFirmwareActive) {
+    if (userFirmwareActive || isVisibleSequencer()) {
       if (layer == LED_LAYER_CUSTOM1) continue;
     }
     // don't show the custom layer 2 in regular firmware mode
-    else {
+    if (!userFirmwareActive) {
       if (layer == LED_LAYER_CUSTOM2) continue;
     }
     if (!isVisibleSequencer()) {
       if (layer == LED_LAYER_SEQUENCER) continue;
     }
-    // in normal display mode, show all layers and only show the main in other display modes
-    if (displayMode == displayNormal || layer == LED_LAYER_MAIN) {
+    // in normal and split point display mode, show all layers and only show the main in other display modes
+    if (displayMode == displayNormal || displayMode == displaySplitPoint || layer == LED_LAYER_MAIN) {
       data = ledBuffered(layer, col, row);
     }    
   }
-  while(layer > 0 && (data & B00000111) == cellOff);
+  while (layer > 0 && (data & B00000111) == cellOff);
 
   return data;
 }
@@ -132,6 +191,11 @@ void setLed(byte col, byte row, byte color, CellDisplay disp, byte layer) {
   }
 }
 
+byte getLedColor(byte col, byte row, byte layer) {
+  if (col >= NUMCOLS || row >= NUMROWS || layer > MAX_LED_LAYERS) return COLOR_OFF;
+  return (ledVisible(layer, col, row) >> 3) & B00011111;
+}
+
 // light up a single LED with the default color
 void lightLed(byte col, byte row) {
   setLed(col, row, globalColor, cellOn);
@@ -140,6 +204,7 @@ void lightLed(byte col, byte row) {
 // clear a single LED
 void clearLed(byte col, byte row) {
   clearLed(col, row, LED_LAYER_MAIN);
+  clearLed(col, row, LED_LAYER_LOWROW);
 }
 
 void clearLed(byte col, byte row, byte layer) {
@@ -190,9 +255,22 @@ void clearDisplayImmediately() {
   digitalWrite(37, HIGH);
 }
 
+void disableLedDisplay() {
+  ledDisplayEnabled = false;
+  clearDisplayImmediately();
+}
+
+void enableLedDisplay() {
+  // enable the outputs of the LED driver chips
+  digitalWrite(37, LOW);
+  ledDisplayEnabled = true;
+}
+
 // refreshLedColumn:
 // Called when it's time to refresh the next column of LEDs. Internally increments the column number every time it's called.
 void refreshLedColumn(unsigned long now) {
+  if (!ledDisplayEnabled) return;
+
   // disabling the power output from the LED driver pins early prevents power leaking into unwanted cells.
   digitalWrite(37, HIGH);                                         // disable the outputs of the LED driver chips
 

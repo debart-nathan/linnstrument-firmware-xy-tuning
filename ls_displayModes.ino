@@ -1,7 +1,17 @@
 /************************** ls_displayModes: LinnStrument display modes drawing *******************
-This work is licensed under the Creative Commons Attribution-ShareAlike 3.0 Unported License.
-To view a copy of this license, visit http://creativecommons.org/licenses/by-sa/3.0/
-or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+Copyright 2023 Roger Linn Design (https://www.rogerlinndesign.com)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 ***************************************************************************************************
 There are 13 different display modes.
 
@@ -49,6 +59,7 @@ displaySequencerProjects      : sequencer projects
 displaySequencerDrum0107      : sequencer first 7 drum notes
 displaySequencerDrum0814      : sequencer second 7 drum notes
 displaySequencerColors        : sequencer low row colors
+displayCustomLedsEditor       : editor for custom LEDs
 
 These routines handle the painting of these display modes on LinnStument's 208 LEDs.
 **************************************************************************************************/
@@ -219,6 +230,9 @@ void updateDisplay() {
     case displaySequencerColors:
       paintSequencerColors();
       break;
+    case displayCustomLedsEditor:
+      paintCustomLedsEditor();
+      break;
   }
 
   updateSwitchLeds();
@@ -262,6 +276,10 @@ void exitDisplayMode(DisplayMode mode) {
       break;
     case displayEditAudienceMessage:
       trimEditedAudienceMessage();
+      storeSettings();
+      break;
+    case displayCustomLedsEditor:
+      storeCustomLedLayer(getActiveCustomLedPattern());
       storeSettings();
       break;
     default:
@@ -343,6 +361,9 @@ void updateSwitchLeds() {
     case displayPerSplit:
       lightLed(0, PER_SPLIT_ROW);
       break;
+    case displayCustomLedsEditor:
+      setLed(0, SWITCH_SWITCH_1, customLedColor, cellSlowPulse);
+      break;
     default:
       break;
   }
@@ -401,6 +422,11 @@ void paintNormalDisplaySplit(byte split, byte leftEdge, byte rightEdge) {
   for (byte row = 0; row < NUMROWS; ++row) {
     if (Split[split].ccFaders) {
       paintCCFaderDisplayRow(split, row, faderLeft, faderLength);
+      if (row == 0) {
+        for (byte col = leftEdge; col < rightEdge; ++col) {
+          clearLed(col, row, LED_LAYER_LOWROW);
+        }
+      }
     }
     else if (isStrummingSplit(split)) {
       for (byte col = leftEdge; col < rightEdge; ++col) {
@@ -414,10 +440,10 @@ void paintNormalDisplaySplit(byte split, byte leftEdge, byte rightEdge) {
 
       if (!userFirmwareActive && row == 0 && Split[split].lowRowMode != lowRowNormal) {
         if (Split[split].lowRowMode == lowRowCCX && Split[split].lowRowCCXBehavior == lowRowCCFader) {
-          paintCCFaderDisplayRow(split, 0, Split[split].colorLowRow, Split[split].ccForLowRow, faderLeft, faderLength);
+          paintCCFaderDisplayRow(split, 0, Split[split].colorLowRow, Split[split].ccForLowRow, faderLeft, faderLength, LED_LAYER_LOWROW);
         }
         if (Split[split].lowRowMode == lowRowCCXYZ && Split[split].lowRowCCXYZBehavior == lowRowCCFader) {
-          paintCCFaderDisplayRow(split, 0, Split[split].colorLowRow, Split[split].ccForLowRowX, faderLeft, faderLength);
+          paintCCFaderDisplayRow(split, 0, Split[split].colorLowRow, Split[split].ccForLowRowX, faderLeft, faderLength, LED_LAYER_LOWROW);
         }
       }
     }
@@ -431,15 +457,19 @@ void paintCCFaderDisplayRow(byte split, byte row, byte faderLeft, byte faderLeng
 }
 
 void paintCCFaderDisplayRow(byte split, byte row, byte color, unsigned short ccForFader, byte faderLeft, byte faderLength) {
+  paintCCFaderDisplayRow(split, row, color, ccForFader, faderLeft, faderLength, LED_LAYER_MAIN);
+}
+
+void paintCCFaderDisplayRow(byte split, byte row, byte color, unsigned short ccForFader, byte faderLeft, byte faderLength, byte layer) {
   if (userFirmwareActive || ccForFader > 128) return;
 
   // when the fader only spans one cell, it acts as a toggle
   if (faderLength == 0) {
       if (ccFaderValues[split][ccForFader] > 0) {
-        setLed(faderLeft, row, color, cellOn);
+        setLed(faderLeft, row, color, cellOn, layer);
       }
       else {
-        clearLed(faderLeft, row);
+        clearLed(faderLeft, row, layer);
       }
   }
   // otherwise calculate the fader position based on its value and light the appropriate leds
@@ -448,10 +478,10 @@ void paintCCFaderDisplayRow(byte split, byte row, byte color, unsigned short ccF
 
     for (byte col = faderLength + faderLeft; col >= faderLeft; --col ) {
       if (Device.calRows[col][0].fxdReferenceX - FXD_CALX_HALF_UNIT > fxdFaderPosition) {
-        clearLed(col, row);
+        setLed(col, row, COLOR_BLACK, cellOn, layer);
       }
       else {
-        setLed(col, row, color, cellOn);
+        setLed(col, row, color, cellOn, layer);
       }
     }
   }
@@ -492,7 +522,7 @@ void paintNormalDisplayCell(byte split, byte col, byte row) {
     colour = COLOR_OFF;
     cellDisplay = cellOff;
   }
-  else {
+  else if (!customLedPatternActive) {
     byte octaveNote = abs(displayedNote % 12);
 
     // first paint all cells in split to its background color
@@ -525,10 +555,16 @@ void paintNormalDisplayCell(byte split, byte col, byte row) {
       colour = Split[split].colorLowRow;
       cellDisplay = cellOn;
     }
+    // actually set the cell's color
+    setLed(col, row, colour, cellDisplay, LED_LAYER_LOWROW);
   }
-
-  // actually set the cell's color
-  setLed(col, row, colour, cellDisplay);
+  else {
+    // actually set the cell's color
+    if (row == 0) {
+      clearLed(col, row, LED_LAYER_LOWROW);
+    }
+    setLed(col, row, colour, cellDisplay, LED_LAYER_MAIN);
+  }
 }
 
 // paintPerSplitDisplay:
@@ -1254,7 +1290,6 @@ void paintSensorSensitivityZDisplay() {
   for (byte row = 1; row < NUMROWS; ++row) {
     clearRow(row);
   }
-  setLed(NUMCOLS-1, NUMROWS-1,  globalAltColor, cellOn);
   paintNumericDataDisplay(globalColor, Device.sensorSensitivityZ, 0, false);
 }
 
@@ -1469,7 +1504,7 @@ void displayActiveNotes() {
     for (byte col = 0; col < 3; ++col) {
       byte light = col + (row * 3);
       if (light == Global.activeNotes) {
-        lightLed(2+col, row);
+        setLed(2 + col, row, globalColor, cellOn);
       }
     }
   }
@@ -1607,12 +1642,16 @@ void paintGlobalSettingsDisplay() {
 
     switch (lightSettings) {
       case LIGHTS_MAIN:
-        lightLed(1, 0);
-        displayNoteLights(Global.mainNotes[Global.activeNotes]);
+        if (!customLedPatternActive) {
+          lightLed(1, 0);
+          displayNoteLights(Global.mainNotes[Global.activeNotes]);
+        }
         break;
       case LIGHTS_ACCENT:
-        lightLed(1, 1);
-        displayNoteLights(Global.accentNotes[Global.activeNotes]);
+        if (!customLedPatternActive) {
+          lightLed(1, 1);
+          displayNoteLights(Global.accentNotes[Global.activeNotes]);
+        }
         break;
       case LIGHTS_ACTIVE:
         lightLed(1, 2);
@@ -1742,7 +1781,7 @@ void paintGlobalSettingsDisplay() {
     byte color = Split[LEFT].colorMain;
     char str[4];
     const char* format = "%3d";
-    snprintf(str, sizeof(str), format, FXD4_TO_INT(fxd4CurrentTempo));
+    snprintf(str, sizeof(str), format, (byte)FXD4_TO_INT(fxd4CurrentTempo));
     tinyfont_draw_string(0, 4, str, color);
   }
 
@@ -1758,6 +1797,10 @@ void paintGlobalSettingsDisplay() {
     }
   }
 #endif
+}
+
+void paintCustomLedsEditor() {
+  // nothing to do, everything is handled in the regular LED rendering routine
 }
 
 byte getRowOffsetColor() {

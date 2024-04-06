@@ -1,37 +1,26 @@
 /*=====================================================================================================================
-======================================== LinnStrument Operating System v2.2.2 =========================================
+======================================== LinnStrument Operating System v2.3.4 =========================================
 =======================================================================================================================
 
-Operating System for the LinnStrument (c) music controller by Roger Linn Design (www.rogerlinndesign.com).
+Operating System for the LinnStrument (c) music controller by
+Roger Linn Design (https://www.rogerlinndesign.com).
 
-Written by Roger Linn and Geert Bevin (http://gbevin.com) with significant help by Tim Thompson (http://timthompson.com).
+Written by Roger Linn and Geert Bevin (https://www.uwyn.com) with significant
+help by Tim Thompson (https://timthompson.com).
 
-LinnStrument Operating System is licensed under a Creative Commons Attribution-ShareAlike 3.0 Unported License,
-viewable at <http://creativecommons.org/licenses/by-sa/3.0/>.
+Copyright 2023 Roger Linn Design (https://www.rogerlinndesign.com)
 
-You are free:
-1) to Share — to copy, distribute and transmit the work
-2) to Remix — to adapt the work
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-Under the following conditions:
-1) Attribution — You must attribute the work in the manner specified by the author or licensor
-(but not in any way that suggests that they endorse you or your use of the work).
-2) Noncommercial — You may not use this work for commercial purposes.
-3) Share Alike — If you alter, transform, or build upon this work, you may distribute the resulting work
-only under the same or similar license to this one.
+    http://www.apache.org/licenses/LICENSE-2.0
 
-With the understanding that:
-1) Waiver — Any of the above conditions can be waived if you get permission from the copyright holder.
-2) Public Domain — Where the work or any of its elements is in the public domain under applicable law,
-that status is in no way affected by the license.
-3) Other Rights — In no way are any of the following rights affected by the license:
-      a) Your fair dealing or fair use rights, or other applicable copyright exceptions and limitations;
-      b) The author's moral rights;
-      c) Rights other persons may have either in the work itself or in how the work is used, such as
-      publicity or privacy rights.
-
-Notice — For any reuse or distribution, you must make clear to others the license terms of this work.
-The best way to do this is with a link to http://creativecommons.org/licenses/by-nc-sa/3.0/deed.en_US
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 
 For any questions about this, contact Roger Linn Design at support@rogerlinndesign.com.
 
@@ -56,7 +45,7 @@ For any questions about this, contact Roger Linn Design at support@rogerlinndesi
 
 /******************************************** CONSTANTS ******************************************/
 
-const char* OSVersion = "222X";
+const char* OSVersion = "234X";
 const char* OSVersionBuild = ".057";
 
 // SPI addresses
@@ -174,10 +163,11 @@ byte NUMROWS = 8;                    // number of touch sensor rows
 #define LED_LAYER_MAIN      0
 #define LED_LAYER_CUSTOM1   1
 #define LED_LAYER_CUSTOM2   2
-#define LED_LAYER_PLAYED    3
-#define LED_LAYER_SEQUENCER 4
-#define LED_LAYER_COMBINED  5
-#define MAX_LED_LAYERS      5
+#define LED_LAYER_LOWROW    3
+#define LED_LAYER_PLAYED    4
+#define LED_LAYER_SEQUENCER 5
+#define LED_LAYER_COMBINED  6
+#define MAX_LED_LAYERS      6
 
 // The values here MUST be the same as the row numbers of the cells in GlobalSettings
 #define LIGHTS_MAIN    0
@@ -232,6 +222,15 @@ byte NUMROWS = 8;                    // number of touch sensor rows
 #define TEMPO_ARP_SIXTEENTH_SWING 0xff
 
 const unsigned short ccFaderDefaults[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+
+const int LED_PATTERNS = 3;
+
+// Two buffers of ...
+// A 26 by 8 byte array containing one byte for each LED:
+// bits 4-6: 3 bits to select the color: 0:off, 1:red, 2:yellow, 3:green, 4:cyan, 5:blue, 6:magenta
+// bits 0-2: 0:off, 1: on, 2: pulse
+const unsigned long LED_LAYER_SIZE = MAXCOLS * MAXROWS;
+const unsigned long LED_ARRAY_SIZE = (MAX_LED_LAYERS+1) * LED_LAYER_SIZE;
 
 /******************************************** VELOCITY *******************************************/
 
@@ -401,6 +400,7 @@ struct NoteEntry {
   inline void setColRow(byte, byte);
   inline byte getCol();
   inline byte getRow();
+  inline boolean hasTouch();
 
   inline byte getNextNote();
   inline byte getNextChannel();
@@ -410,8 +410,8 @@ struct NoteEntry {
   inline void setPreviousChannel(byte);
 };
 struct NoteTouchMapping {
-  void initialize();                                         // initialize the mapping data
-  void releaseLatched(byte split);                           // release all the note mappings that are latched and have no real active touch
+  void initialize(byte mappedSplit);                         // initialize the mapping data
+  void releaseLatched();                                     // release all the note mappings that are latched and have no real active touch
   void noteOn(signed char, signed char, byte, byte);         // register the cell for which a note was turned on
   void noteOff(signed char, signed char);                    // turn off a note
   void changeCell(signed char, signed char, byte, byte);     // changes the cell of an active note
@@ -421,6 +421,7 @@ struct NoteTouchMapping {
 
   void debugNoteChain();
 
+  unsigned char split;
   unsigned short noteCount;
   byte musicalTouchCount[16];
   signed char firstNote;
@@ -487,7 +488,8 @@ enum DisplayMode {
   displaySequencerProjects,
   displaySequencerDrum0107,
   displaySequencerDrum0814,
-  displaySequencerColors
+  displaySequencerColors,
+  displayCustomLedsEditor
 };
 DisplayMode displayMode = displayNormal;
 
@@ -673,30 +675,31 @@ enum SplitHandednessType {
 };
 
 struct DeviceSettings {
-  byte version;                              // the version of the configuration format
-  boolean serialMode;                        // 0 = normal MIDI I/O, 1 = Arduino serial mode for OS update and serial monitor
-  CalibrationX calRows[MAXCOLS+1][4];        // store four rows of calibration data
-  CalibrationY calCols[9][MAXROWS];          // store nine columns of calibration data
-  uint32_t calCrc;                           // the CRC check value of the calibration data to see if it's still valid
-  boolean calCrcCalculated;                  // indicates whether the CRC of the calibration was calculated, previous firmware versions didn't
-  boolean calibrated;                        // indicates whether the calibration data actually resulted from a calibration operation
-  boolean calibrationHealed;                 // indicates whether the calibration data was healed
-  unsigned short minUSBMIDIInterval;         // the minimum delay between MIDI bytes when sent over USB
-  byte sensorSensitivityZ;                   // the scaling factor of the raw value of Z in percentage
-  unsigned short sensorLoZ;                  // the lowest acceptable raw Z value to start a touch
-  unsigned short sensorFeatherZ;             // the lowest acceptable raw Z value to continue a touch
-  unsigned short sensorRangeZ;               // the maximum raw value of Z
-  boolean sleepAnimationActive;              // store whether an animation was active last
-  boolean sleepActive;                       // store whether LinnStrument should go to sleep automatically
-  byte sleepDelay;                           // the number of minutes it takes for sleep to kick in
-  byte sleepAnimationType;                   // the animation type to use during sleep, see SleepAnimationType
-  char audienceMessages[16][31];             // the 16 audience messages that will scroll across the surface
-  boolean operatingLowPower;                 // whether low power mode is active or not
-  boolean otherHanded;                       // whether change the handedness of the splits
-  byte splitHandedness;                      // see SplitHandednessType
-  boolean midiThrough;                       // false if incoming MIDI should be isolated, true if it should be passed through to the outgoing MIDI port
-  short lastLoadedPreset;                    // the last settings preset that was loaded
-  short lastLoadedProject;                   // the last sequencer project that was loaded
+  byte version;                                   // the version of the configuration format
+  boolean serialMode;                             // 0 = normal MIDI I/O, 1 = Arduino serial mode for OS update and serial monitor
+  CalibrationX calRows[MAXCOLS+1][4];             // store four rows of calibration data
+  CalibrationY calCols[9][MAXROWS];               // store nine columns of calibration data
+  uint32_t calCrc;                                // the CRC check value of the calibration data to see if it's still valid
+  boolean calCrcCalculated;                       // indicates whether the CRC of the calibration was calculated, previous firmware versions didn't
+  boolean calibrated;                             // indicates whether the calibration data actually resulted from a calibration operation
+  boolean calibrationHealed;                      // indicates whether the calibration data was healed
+  unsigned short minUSBMIDIInterval;              // the minimum delay between MIDI bytes when sent over USB
+  byte sensorSensitivityZ;                        // the scaling factor of the raw value of Z in percentage
+  unsigned short sensorLoZ;                       // the lowest acceptable raw Z value to start a touch
+  unsigned short sensorFeatherZ;                  // the lowest acceptable raw Z value to continue a touch
+  unsigned short sensorRangeZ;                    // the maximum raw value of Z
+  boolean sleepAnimationActive;                   // store whether an animation was active last
+  boolean sleepActive;                            // store whether LinnStrument should go to sleep automatically
+  byte sleepDelay;                                // the number of minutes it takes for sleep to kick in
+  byte sleepAnimationType;                        // the animation type to use during sleep, see SleepAnimationType
+  char audienceMessages[16][31];                  // the 16 audience messages that will scroll across the surface
+  boolean operatingLowPower;                      // whether low power mode is active or not
+  boolean otherHanded;                            // whether change the handedness of the splits
+  byte splitHandedness;                           // see SplitHandednessType
+  boolean midiThrough;                            // false if incoming MIDI should be isolated, true if it should be passed through to the outgoing MIDI port
+  short lastLoadedPreset;                         // the last settings preset that was loaded
+  short lastLoadedProject;                        // the last sequencer project that was loaded
+  byte customLeds[LED_PATTERNS][LED_LAYER_SIZE];  // the custom LEDs that persist across power cycle
 };
 #define Device config.device
 
@@ -999,6 +1002,8 @@ unsigned long prevLedTimerCount;                         // timer for refreshing
 unsigned long prevGlobalSettingsDisplayTimerCount;       // timer for refreshing the global settings display
 unsigned long prevTouchAnimTimerCount;                   // timer for refreshing the touch animation
 
+boolean customLedPatternActive = false;                  // was a custom led pattern loaded from flash
+
 unsigned long tempoLedOn = 0;                       // indicates when the tempo clock led was turned on
 
 ChannelBucket splitChannels[NUMSPLITS];             // the MIDI channels that are being handed out
@@ -1070,6 +1075,8 @@ short restrictedRow = -1;                           // temporarily restrict touc
 byte guitarTuningRowNum = 0;                        // active row number for configuring the guitar tuning
 short guitarTuningPreviewNote = -1;                 // active note that is previewing the guitar tuning pitch
 short guitarTuningPreviewChannel = -1;              // active channel that is previewing the guitar tuning pitch
+
+byte customLedColor = COLOR_GREEN;                  // color is used for drawing in the custom LED editor
 
 /************************* FUNCTION DECLARATIONS TO WORK AROUND COMPILER *************************/
 
@@ -1282,10 +1289,6 @@ void setup() {
   /*!!*/
   //*************************************************************************************************************************************************
 
-  // set display to normal performance mode & refresh it
-  clearDisplay();
-  setDisplayMode(displayNormal);
-
   // initialize input pins for 2 foot switches
   pinMode(FOOT_SW_LEFT, INPUT_PULLUP);
   pinMode(FOOT_SW_RIGHT, INPUT_PULLUP);
@@ -1296,6 +1299,10 @@ void setup() {
   initializeSequencer();
 
   reset();
+
+  // set display to normal performance mode & refresh it
+  clearDisplay();
+  setDisplayMode(displayNormal);
 
   // ensure that the switches that are pressed down for the global reset at boot are not taken into account any further
   if (globalReset) {

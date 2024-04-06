@@ -1,7 +1,17 @@
 /****************************** ls_settings: LinnStrument Settings ********************************
-This work is licensed under the Creative Commons Attribution-ShareAlike 3.0 Unported License.
-To view a copy of this license, visit http://creativecommons.org/licenses/by-sa/3.0/
-or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+Copyright 2023 Roger Linn Design (https://www.rogerlinndesign.com)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 ***************************************************************************************************
 These functions handle the changing of any of LinnStrument's panel settings.
 **************************************************************************************************/
@@ -25,6 +35,29 @@ const char* defaultAudienceMessages[16] = {
   "HELLO PARIS",
   "HELLO TOKYO",
   "HELLO BARCELONA"
+};
+
+// These arrays use the setLed encoding scheme where the color is bitshifted << 3 and ORed with the CellDisplay value
+const byte CUSTOM_LEDS_PATTERN1[LED_LAYER_SIZE] = {
+   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+   0, 25,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 25,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 25,
+   0, 25,  0,  0, 25,  0, 25,  0, 25,  0, 25,  0,  0, 25,  0,  0, 25,  0, 25,  0, 25,  0, 25,  0,  0, 25,
+   0, 25,  0,  0, 25,  0, 25,  0, 25,  0, 25,  0,  0, 25,  0,  0, 25,  0, 25,  0, 25,  0, 25,  0,  0, 25,
+   0, 25,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 25,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 25,
+   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0
+};
+
+const byte CUSTOM_LEDS_PATTERN2[LED_LAYER_SIZE] = {
+   0,  0, 41,  0,  9,  0, 17, 33,  0, 49,  0, 73, 25,  0, 41,  0,  9,  0, 17, 33,  0, 49,  0, 73, 25,  0,
+   0, 17, 33,  0, 49,  0, 73, 25,  0, 41,  0,  9,  0, 17, 33,  0, 49,  0, 73, 25,  0, 41,  0,  9,  0, 17,
+   0, 73, 25,  0, 41,  0,  9,  0, 17, 33,  0, 49,  0, 73, 25,  0, 41,  0,  9,  0, 17, 33,  0, 49,  0, 73,
+   0,  9,  0, 17, 33,  0, 49,  0, 73, 25,  0, 41,  0,  9,  0, 17, 33,  0, 49,  0, 73, 25,  0, 41,  0,  9,
+   0, 49,  0, 73, 25,  0, 41,  0,  9,  0, 17, 33,  0, 49,  0, 73, 25,  0, 41,  0,  9,  0, 17, 33,  0, 49,
+   0, 41,  0,  9,  0, 17, 33,  0, 49,  0, 73, 25,  0, 41,  0,  9,  0, 17, 33,  0, 49,  0, 73, 25,  0, 41,
+   0, 33,  0, 49,  0, 73, 25,  0, 41,  0,  9,  0, 17, 33,  0, 49,  0, 73, 25,  0, 41,  0,  9,  0, 17, 33,
+   0, 25,  0, 41,  0,  9,  0, 17, 33,  0, 49,  0, 73, 25,  0, 41,  0,  9,  0, 17, 33,  0, 49,  0, 73, 25
 };
 
 unsigned long tempoChangeTime = 0;           // time of last touch for tempo change
@@ -171,9 +204,7 @@ void writeSettingsToFlash() {
   DEBUGPRINT((2," bytes"));
   DEBUGPRINT((2,"\n"));
 
-  clearDisplayImmediately();
-  clearFullDisplay();
-  completelyRefreshLeds();
+  disableLedDisplay();
 
   // read the marker to know which configuration version was last written successfully
   byte marker = dueFlashStorage.read(SETTINGS_OFFSET);
@@ -195,8 +226,11 @@ void writeSettingsToFlash() {
   // write the marker after the configuration data so that this version becomes to latest coherent one
   dueFlashStorage.write(SETTINGS_OFFSET, marker);
 
+  clearFullDisplay();
+  completelyRefreshLeds();
   updateDisplay();
-}
+  enableLedDisplay();
+ }
 
 void loadSettings() {
   // read the marker to know which configuration version was last written successfully
@@ -285,6 +319,7 @@ void applyPresetSettings() {
 void applyConfiguration() {
   applyPresetSettings();
   applySequencerSettings();
+  loadCustomLedLayer(getActiveCustomLedPattern());
 }
 
 void applySystemState() {
@@ -311,7 +346,7 @@ void storeSettingsToPreset(byte p) {
 // The first time after new code is loaded into the Linnstrument, this sets the initial defaults of all settings.
 // On subsequent startups, these values are overwritten by loading the settings stored in flash.
 void initializeDeviceSettings() {
-  Device.version = 15;
+  Device.version = 16;
   Device.serialMode = false;
   Device.sleepAnimationActive = false;
   Device.sleepActive = false;
@@ -327,6 +362,10 @@ void initializeDeviceSettings() {
   Global.splitActive = false;
 
   initializeAudienceMessages();
+
+  memcpy(&Device.customLeds[0][0], &CUSTOM_LEDS_PATTERN1[0], LED_LAYER_SIZE);
+  memcpy(&Device.customLeds[1][0], &CUSTOM_LEDS_PATTERN2[0], LED_LAYER_SIZE);
+  memset(&Device.customLeds[2][0], 0, LED_LAYER_SIZE);
 }
 
 void initializeAudienceMessages() {
@@ -464,6 +503,47 @@ void initializeGuitarTuning(GlobalSettings& g) {
     g.guitarTuning[7] = 64;
 }
 
+void initializeMidiSettings(byte split, PresetSettings& p) {
+  for (byte chan = 0; chan < 16; ++chan) {
+    focusCell[split][chan].col = 0;
+    focusCell[split][chan].row = 0;
+  }
+  p.split[split].midiMode = oneChannel;
+  p.split[split].midiChanPerRowReversed = false;
+  p.split[split].expressionForY = timbreCC74;
+  p.split[split].customCCForY = 74;
+  p.split[split].expressionForZ = loudnessPolyPressure;
+  p.split[split].bendRangeOption = bendRange2;
+  p.split[split].customBendRange = 24;
+  p.split[split].mpe = false;
+
+  // initialize values that differ between the keyboard splits
+  if (split == LEFT) {
+    p.split[LEFT].midiChanMain = 1;
+    p.split[LEFT].midiChanMainEnabled = true;
+    p.split[LEFT].midiChanSet[0] = false;
+    for (byte chan = 1; chan < 8; ++chan) {
+      p.split[LEFT].midiChanSet[chan] = true;
+    }
+    for (byte chan = 8; chan < 16; ++chan) {
+      p.split[LEFT].midiChanSet[chan] = false;
+    }
+    p.split[LEFT].midiChanPerRow = 1;
+  }
+  else if (split == RIGHT) {
+    p.split[RIGHT].midiChanMain = 16;
+    p.split[RIGHT].midiChanMainEnabled = true;
+    for (byte chan = 0; chan < 8; ++chan) {
+      p.split[RIGHT].midiChanSet[chan] = false;
+    }
+    for (byte chan = 8; chan < 15; ++chan) {
+      p.split[RIGHT].midiChanSet[chan] = true;
+    }
+    p.split[RIGHT].midiChanSet[15] = false;
+    p.split[RIGHT].midiChanPerRow = 9;
+  }
+}
+
 void initializePresetSettings() {
   Global.splitActive = false;
 
@@ -536,27 +616,16 @@ void initializePresetSettings() {
 
     // initialize all identical values in the keyboard split data
     for (byte s = 0; s < NUMSPLITS; ++s) {
-        for (byte chan = 0; chan < 16; ++chan) {
-          focusCell[s][chan].col = 0;
-          focusCell[s][chan].row = 0;
-        }
-        p.split[s].midiMode = oneChannel;
-        p.split[s].midiChanPerRowReversed = false;
-        p.split[s].bendRangeOption = bendRange2;
-        p.split[s].customBendRange = 24;
         p.split[s].sendX = true;
         p.split[s].sendY = true;
         p.split[s].sendZ = true;
         p.split[s].pitchCorrectQuantize = true;
         p.split[s].pitchCorrectHold = true;
         p.split[s].pitchResetOnRelease = false;
-        p.split[s].expressionForY = timbreCC74;
         p.split[s].minForY = 0;
         p.split[s].maxForY = 127;
-        p.split[s].customCCForY = 74;
         p.split[s].relativeY = false;
         p.split[s].initialRelativeY = 64;
-        p.split[s].expressionForZ = loudnessPolyPressure;
         p.split[s].minForZ = 0;
         p.split[s].maxForZ = 127;
         p.split[s].customCCForZ = 11;
@@ -580,37 +649,18 @@ void initializePresetSettings() {
         p.split[s].arpeggiator = false;
         p.split[s].ccFaders = false;
         p.split[s].strum = false;
-        p.split[s].mpe = false;
 
         p.split[s].sequencer = false;
     }
 
     // initialize values that differ between the keyboard splits
-    p.split[LEFT].midiChanMain = 1;
-    p.split[LEFT].midiChanMainEnabled = true;
-    p.split[LEFT].midiChanSet[0] = false;
-    for (byte chan = 1; chan < 8; ++chan) {
-      p.split[LEFT].midiChanSet[chan] = true;
-    }
-    for (byte chan = 8; chan < 16; ++chan) {
-      p.split[LEFT].midiChanSet[chan] = false;
-    }
-    p.split[LEFT].midiChanPerRow = 1;
+    initializeMidiSettings(LEFT, p);
     p.split[LEFT].colorMain = COLOR_GREEN;
     p.split[LEFT].colorPlayed = COLOR_RED;
     p.split[LEFT].lowRowMode = lowRowNormal;
     p.split[LEFT].sequencerView = sequencerScales;
 
-    p.split[RIGHT].midiChanMain = 16;
-    p.split[RIGHT].midiChanMainEnabled = true;
-    for (byte chan = 0; chan < 8; ++chan) {
-      p.split[RIGHT].midiChanSet[chan] = false;
-    }
-    for (byte chan = 8; chan < 15; ++chan) {
-      p.split[RIGHT].midiChanSet[chan] = true;
-    }
-    p.split[RIGHT].midiChanSet[15] = false;
-    p.split[RIGHT].midiChanPerRow = 9;
+    initializeMidiSettings(RIGHT, p);
     p.split[RIGHT].colorMain = COLOR_BLUE;
     p.split[RIGHT].colorPlayed = COLOR_MAGENTA;
     p.split[RIGHT].lowRowMode = lowRowNormal;
@@ -633,6 +683,8 @@ void initializePresetSettings() {
   config.preset[1].split[RIGHT].midiMode = channelPerNote;
   config.preset[1].split[LEFT].bendRangeOption = bendRange24;
   config.preset[1].split[RIGHT].bendRangeOption = bendRange24;
+  config.preset[1].split[LEFT].customBendRange = 48;
+  config.preset[1].split[RIGHT].customBendRange = 48;
   config.preset[1].split[LEFT].expressionForZ = loudnessChannelPressure;
   config.preset[1].split[RIGHT].expressionForZ = loudnessChannelPressure;
   config.preset[1].split[LEFT].midiChanMain = 1;
@@ -703,6 +755,11 @@ void applyPitchCorrectHold() {
       }
     }
   }
+}
+
+void setBendRange(byte split, byte bendRange) {
+  applyBendRange(Split[split], bendRange);
+  midiSendMpePitchBendRange(split);
 }
 
 void applyBendRange(SplitSettings& target, byte bendRange) {
@@ -827,6 +884,10 @@ void handleControlButtonNewTouch() {
         updateDisplay();
         updateSwitchLeds();
       }
+      else if (displayMode == displayCustomLedsEditor) {
+        customLedColor = colorCycle(customLedColor, false);
+        updateDisplay();
+      }
       else {
         doSwitchPressed(SWITCH_SWITCH_1);
         updateSwitchLeds();
@@ -917,9 +978,8 @@ void handleControlButtonRelease() {
       clearLed(0, sensorRow);
 
       setDisplayMode(displayNormal);
-      updateDisplay();
-
       storeSettings();
+      updateDisplay();
       break;
 
     case SPLIT_ROW:                                          // SPLIT button released
@@ -1016,6 +1076,7 @@ void updateSplitMidiChannels(byte sp) {
     }
   }
   preResetMidiExpression(sp);
+  midiSendMpePitchBendRange(sp);
 }
 
 byte countMpePolyphony(byte split) {
@@ -1069,13 +1130,11 @@ boolean activateMpeChannels(byte split, byte mainChannel, byte polyphony) {
 }
 
 void configureStandardMpeExpression(byte split) {
-  Split[split].bendRangeOption = bendRange24;
-  Split[split].customBendRange = 48;
   Split[split].expressionForY = timbreCC74;
   Split[split].customCCForY = 74;
   Split[split].expressionForZ = loudnessChannelPressure;
 
-  midiSendMpePitchBendRange(split);
+  setBendRange(split, 48);
 }
 
 void enableMpe(byte split, byte mainChannel, byte polyphony) {
@@ -1127,6 +1186,10 @@ boolean ensureCellBeforeHoldWait(byte resetColor, CellDisplay resetDisplay) {
     setLed(sensorCol, sensorRow, resetColor, resetDisplay);
   }
   return false;
+}
+
+boolean isCellPastSensorHoldWait() {
+  return sensorCell->lastTouch != 0 && calcTimeDelta(millis(), sensorCell->lastTouch) > SENSOR_HOLD_DELAY;
 }
 
 boolean isCellPastEditHoldWait() {
@@ -1203,16 +1266,19 @@ void handlePerSplitSettingNewTouch() {
     case 7:
       switch (sensorRow) {
         case 7:
-          Split[Global.currentPerSplit].bendRangeOption = bendRange2;
+          setBendRange(Global.currentPerSplit, 2);
           break;
         case 6:
-          Split[Global.currentPerSplit].bendRangeOption = bendRange3;
+          setBendRange(Global.currentPerSplit, 3);
           break;
         case 5:
-          Split[Global.currentPerSplit].bendRangeOption = bendRange12;
+          setBendRange(Global.currentPerSplit, 12);
           break;
         case 4:
+          // just switch the option and don't set the bend range because
+          // otherwise we'll overwrite the existing custom range setting
           Split[Global.currentPerSplit].bendRangeOption = bendRange24;
+          midiSendMpePitchBendRange(Global.currentPerSplit);
           break;
       }
       break;
@@ -1394,6 +1460,9 @@ void handlePerSplitSettingNewTouch() {
   switch (sensorCol) {
     case 1:
       switch (sensorRow) {
+        case 7:
+          setLed(sensorCol, sensorRow, Split[sensorSplit].colorMain, cellSlowPulse);
+          break;
         case 6:
           setLed(sensorCol, sensorRow, getMpeColor(sensorSplit), cellSlowPulse);
           break;
@@ -1472,6 +1541,13 @@ void handlePerSplitSettingHold() {
     switch (sensorCol) {
       case 1:
         switch (sensorRow) {
+          case 7:
+            preResetMidiExpression(Global.currentPerSplit);
+            initializeMidiSettings(Global.currentPerSplit, config.settings);
+            updateSplitMidiChannels(Global.currentPerSplit);
+
+            updateDisplay();
+            break;
           case 6:
             setSplitMpeMode(Global.currentPerSplit, true);
             updateDisplay();
@@ -1587,6 +1663,7 @@ void handlePerSplitSettingRelease() {
           if (ensureCellBeforeHoldWait(getBendRangeColor(Global.currentPerSplit),
                                        Split[Global.currentPerSplit].bendRangeOption == bendRange24 ? cellOn : cellOff)) {
             Split[Global.currentPerSplit].bendRangeOption = bendRange24;
+            midiSendMpePitchBendRange(Global.currentPerSplit);
           }
           break;
       }
@@ -1822,6 +1899,7 @@ void handleBendRangeNewTouch() {
 
 void handleBendRangeRelease() {
   handleNumericDataReleaseCol(true);
+  midiSendMpePitchBendRange(Global.currentPerSplit);
 }
 
 void handleLimitsForYNewTouch() {
@@ -2291,14 +2369,6 @@ void toggleNoteLights(int& notelights) {
   notelights ^= 1 << light;
 }
 
-void setActiveNoteLights() {
-  if (sensorCol < 2 || sensorCol > 4 || sensorRow > 3) {
-    return;
-  }
-
-  Global.activeNotes = sensorCol-2 + (sensorRow*3);
-}
-
 boolean isArpeggiatorTempoTriplet() {
   return Global.arpTempo == ArpEighthTriplet || Global.arpTempo == ArpSixteenthTriplet || Global.arpTempo == ArpThirtysecondTriplet;
 }
@@ -2507,7 +2577,9 @@ void handleGlobalSettingNewTouch() {
           case LIGHTS_MAIN:
           case LIGHTS_ACCENT:
           case LIGHTS_ACTIVE:
-            lightSettings = sensorRow;
+            if (!customLedPatternActive) {
+              lightSettings = sensorRow;
+            }
             break;
           case 3:
             // handled at release
@@ -2522,13 +2594,19 @@ void handleGlobalSettingNewTouch() {
           // select individual scale notes or accent notes
           switch (lightSettings) {
             case LIGHTS_MAIN:
-              toggleNoteLights(Global.mainNotes[Global.activeNotes]);
+              if (!customLedPatternActive) {
+                toggleNoteLights(Global.mainNotes[Global.activeNotes]);
+              }
               break;
             case LIGHTS_ACCENT:
-              toggleNoteLights(Global.accentNotes[Global.activeNotes]);
+              if (!customLedPatternActive) {
+                toggleNoteLights(Global.accentNotes[Global.activeNotes]);
+              }
               break;
             case LIGHTS_ACTIVE:
-              setActiveNoteLights();
+              Global.activeNotes = sensorCol-2 + (sensorRow*3);
+              loadCustomLedLayer(getActiveCustomLedPattern());
+              break;
           }
         }
         break;
@@ -2787,6 +2865,14 @@ void handleGlobalSettingNewTouch() {
           break;
       }
       break;
+
+    case 2:
+    case 3:
+    case 4:
+      if (lightSettings == LIGHTS_ACTIVE && sensorRow == 3) {
+        setLed(sensorCol, sensorRow, globalColor, cellSlowPulse);
+      }
+      break;
     
     case 5:
       switch (sensorRow) {
@@ -2894,6 +2980,17 @@ void handleGlobalSettingHold() {
             setDisplayMode(displaySplitHandedness);
             updateDisplay();
             break;
+        }
+        break;
+
+      case 2:
+      case 3:
+      case 4:
+        if (lightSettings == LIGHTS_ACTIVE && sensorRow == 3) {
+            cellTouched(ignoredCell);
+            loadCustomLedLayer(getActiveCustomLedPattern());
+            setDisplayMode(displayCustomLedsEditor);
+            updateDisplay();
         }
         break;
 
@@ -3186,5 +3283,73 @@ void trimEditedAudienceMessage() {
         break;
       }
     }  
+  }
+}
+
+bool findOtherCustomLedsEditorTouch(int& otherCol, int& otherRow) {
+  otherCol = -1;
+  otherRow = -1;
+  for (int row = 0; row < MAXROWS && otherRow == -1; ++row) {
+    if (colsInRowsTouched[row]) {
+      for (int col = 1; col < MAXCOLS && otherCol == -1; ++col) {
+        if (col != sensorCol && colsInRowsTouched[row] & (int32_t)(1 << col)) {
+          otherCol = col;
+          otherRow = row;
+          break;
+        }
+      }
+    }
+  }
+  return otherCol != -1 && otherRow != -1;
+}
+
+void handleCustomLedsEditorNewTouch() {
+  if (sensorCol > 0) {
+    // start tracking the touch duration to be able to enable hold functionality
+    sensorCell->lastTouch = millis();
+
+    bool cleared_area = false;
+    if (cellsTouched > 1) {
+      int other_col = -1;
+      int other_row = -1;
+
+      if (findOtherCustomLedsEditorTouch(other_col, other_row)) {
+        TouchInfo& other_cell = (cell(other_col, other_row));
+        if (other_cell.lastTouch != 0 && abs(sensorCol - other_col) > 0 && abs(sensorRow - other_row) > 0) {
+          cleared_area = true;
+          cellTouched(other_col, other_row, ignoredCell);
+
+          for (int col = min(other_col, sensorCol); col <= max(other_col, sensorCol); ++col) {
+            for (int row = min(other_row, sensorRow); row <= max(other_row, sensorRow); ++row) {
+              setLed(col, row, COLOR_OFF, cellOff, LED_LAYER_CUSTOM1);
+            }
+          }
+          cellTouched(ignoredCell);
+        }
+      }
+    }
+
+    if (!cleared_area) {
+      byte color = getLedColor(sensorCol, sensorRow, LED_LAYER_CUSTOM1);
+      if (color != COLOR_OFF) {
+        setLed(sensorCol, sensorRow, color, cellSlowPulse, LED_LAYER_CUSTOM1);
+      }
+    }
+  }
+}
+
+void handleCustomLedsEditorHold() {
+  if (sensorCol > 0 && isCellPastSensorHoldWait()) {
+    setLed(sensorCol, sensorRow, COLOR_OFF, cellOff, LED_LAYER_CUSTOM1);
+    cellTouched(ignoredCell);
+  }
+}
+
+void handleCustomLedsEditorRelease() {
+  if (sensorCol > 0) {
+    if (!isCellPastSensorHoldWait()) {
+      setLed(sensorCol, sensorRow, customLedColor, cellOn, LED_LAYER_CUSTOM1);
+    }
+    sensorCell->lastTouch = 0;
   }
 }

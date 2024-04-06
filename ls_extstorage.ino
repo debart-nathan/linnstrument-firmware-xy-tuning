@@ -1,7 +1,17 @@
 /***************************** ls_extstorage: LinnStrument Settings *******************************
-This work is licensed under the Creative Commons Attribution-ShareAlike 3.0 Unported License.
-To view a copy of this license, visit http://creativecommons.org/licenses/by-sa/3.0/
-or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+Copyright 2023 Roger Linn Design (https://www.rogerlinndesign.com)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 ***************************************************************************************************
 Functions to exchange settings with an external device over a serial handshake protocol.
 This is essentially used by the upgrade tool to temporarily store the previous settings while doing
@@ -784,10 +794,45 @@ struct ConfigurationV13 {
 /**************************************** Configuration V14 ****************************************
 This is used by firmware v2.1.0
 **************************************************************************************************/
+struct DeviceSettingsV12 {
+  byte version;                              // the version of the configuration format
+  boolean serialMode;                        // 0 = normal MIDI I/O, 1 = Arduino serial mode for OS update and serial monitor
+  CalibrationX calRows[MAXCOLS+1][4];        // store four rows of calibration data
+  CalibrationY calCols[9][MAXROWS];          // store nine columns of calibration data
+  uint32_t calCrc;                           // the CRC check value of the calibration data to see if it's still valid
+  boolean calCrcCalculated;                  // indicates whether the CRC of the calibration was calculated, previous firmware versions didn't
+  boolean calibrated;                        // indicates whether the calibration data actually resulted from a calibration operation
+  boolean calibrationHealed;                 // indicates whether the calibration data was healed
+  unsigned short minUSBMIDIInterval;         // the minimum delay between MIDI bytes when sent over USB
+  byte sensorSensitivityZ;                   // the scaling factor of the raw value of Z in percentage
+  unsigned short sensorLoZ;                  // the lowest acceptable raw Z value to start a touch
+  unsigned short sensorFeatherZ;             // the lowest acceptable raw Z value to continue a touch
+  unsigned short sensorRangeZ;               // the maximum raw value of Z
+  boolean sleepAnimationActive;              // store whether an animation was active last
+  boolean sleepActive;                       // store whether LinnStrument should go to sleep automatically
+  byte sleepDelay;                           // the number of minutes it takes for sleep to kick in
+  byte sleepAnimationType;                   // the animation type to use during sleep, see SleepAnimationType
+  char audienceMessages[16][31];             // the 16 audience messages that will scroll across the surface
+  boolean operatingLowPower;                 // whether low power mode is active or not
+  boolean otherHanded;                       // whether change the handedness of the splits
+  byte splitHandedness;                      // see SplitHandednessType
+  boolean midiThrough;                       // false if incoming MIDI should be isolated, true if it should be passed through to the outgoing MIDI port
+  short lastLoadedPreset;                    // the last settings preset that was loaded
+  short lastLoadedProject;                   // the last sequencer project that was loaded
+};
 struct ConfigurationV14 {
-  DeviceSettings device;
+  DeviceSettingsV12 device;
   PresetSettingsV10 settings;
   PresetSettingsV10 preset[4];
+  SequencerProject project;
+};
+/**************************************** Configuration V15 ****************************************
+This is used by firmware v2.2.0, v2.2.1, v2.2.2
+**************************************************************************************************/
+struct ConfigurationV15 {
+  DeviceSettingsV12 device;
+  PresetSettings settings;
+  PresetSettings preset[6];
   SequencerProject project;
 };
 /*************************************************************************************************/
@@ -892,6 +937,12 @@ boolean upgradeConfigurationSettings(int32_t confSize, byte* buff2) {
         break;
       // this is the v15 of the configuration configuration, apply it if the size is right
       case 15:
+        if (confSize == sizeof(ConfigurationV15)) {
+          copyConfigurationFunction = &copyConfigurationV15;
+        }
+        break;
+      // this is the v16 of the configuration configuration, apply it if the size is right
+      case 16:
         if (confSize == sizeof(Configuration)) {
           memcpy(&config, buff2, confSize);
           result = true;
@@ -2024,15 +2075,59 @@ void copySplitSettingsV6(void* target, void* source) {
 
 /*************************************************************************************************/
 
+void copyDeviceSettingsV12(void* target, void* source) {
+  DeviceSettings* t = (DeviceSettings*)target;
+  DeviceSettingsV12* s = (DeviceSettingsV12*)source;
+
+  t->version = s->version;
+  t->serialMode = true;
+  copyCalibrationV2(&(t->calRows), &(s->calRows), &(t->calCols), &(s->calCols));
+  t->calCrc = s->calCrc;
+  t->calCrcCalculated = s->calCrcCalculated;
+  t->calibrated = s->calibrated;
+  t->minUSBMIDIInterval = s->minUSBMIDIInterval;
+  t->sensorSensitivityZ = s->sensorSensitivityZ;
+  t->sensorLoZ = s->sensorLoZ;
+  t->sensorFeatherZ = s->sensorFeatherZ;
+  t->sensorRangeZ = s->sensorRangeZ;
+  t->sleepAnimationActive = s->sleepAnimationActive;
+  t->sleepActive = s->sleepActive;
+  t->sleepDelay = s->sleepDelay;
+  t->sleepAnimationType = s->sleepAnimationType;
+  copyAudienceMessages(&(t->audienceMessages), &(s->audienceMessages));
+  t->operatingLowPower = false;
+  t->otherHanded = s->otherHanded;
+  t->splitHandedness = s->splitHandedness;
+  t->midiThrough = s->midiThrough;
+  t->lastLoadedPreset = s->lastLoadedPreset;
+  t->lastLoadedProject = s->lastLoadedProject;
+}
+
 void copyConfigurationV14(void* target, void* source) {
   Configuration* t = (Configuration*)target;
   ConfigurationV14* s = (ConfigurationV14*)source;
 
-  memcpy(&t->device, &s->device, sizeof(DeviceSettings));
+  copyDeviceSettingsV12(&t->device, &s->device);
 
   copyPresetSettingsV10(&t->settings, &s->settings);
   for (byte p = 0; p < 4; ++p) {
     copyPresetSettingsV10(&t->preset[p], &s->preset[p]);
+  }
+
+  memcpy(&t->project, &s->project, sizeof(SequencerProject));
+}
+
+/*************************************************************************************************/
+
+void copyConfigurationV15(void* target, void* source) {
+  Configuration* t = (Configuration*)target;
+  ConfigurationV15* s = (ConfigurationV15*)source;
+
+  copyDeviceSettingsV12(&t->device, &s->device);
+
+  memcpy(&t->settings, &s->settings, sizeof(PresetSettings));
+  for (byte p = 0; p < 6; ++p) {
+    memcpy(&t->preset[p], &s->preset[p], sizeof(PresetSettings));
   }
 
   memcpy(&t->project, &s->project, sizeof(SequencerProject));

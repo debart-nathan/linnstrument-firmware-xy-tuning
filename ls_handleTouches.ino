@@ -1,7 +1,17 @@
 /*********************** ls_handleTouches: LinnStrument Handle Touch Events ***********************
-This work is licensed under the Creative Commons Attribution-ShareAlike 3.0 Unported License.
-To view a copy of this license, visit http://creativecommons.org/licenses/by-sa/3.0/
-or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+Copyright 2023 Roger Linn Design (https://www.rogerlinndesign.com)
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 ***************************************************************************************************
 These routines handle the processing of new touch events, continuous updates of touch events and
 released touch events
@@ -696,6 +706,9 @@ void handleNonPlayingTouch() {
     case displaySequencerColors:
       handleSequencerColorsNewTouch();
       break;
+    case displayCustomLedsEditor:
+      handleCustomLedsEditorNewTouch();
+      break;
   }
 }
 
@@ -734,6 +747,10 @@ boolean handleXYZupdate() {
       case displaySensorSensitivityZ:
         handleSensorSensitivityZHold();
         break;
+
+      case displayCustomLedsEditor:
+        handleCustomLedsEditorHold();
+        return false;
 
       default:
         // other displays don't need hold features
@@ -1028,7 +1045,7 @@ boolean handleXYZupdate() {
         // when the legato switch is pressed and this is the only new touch in the split,
         // release all the latched notes after the new note on message
         if (isSwitchLegatoPressed(sensorSplit) && !hasOtherTouchInSplit(sensorSplit)) {
-          noteTouchMapping[sensorSplit].releaseLatched(sensorSplit);
+          noteTouchMapping[sensorSplit].releaseLatched();
         }
       }
 
@@ -1620,6 +1637,9 @@ boolean handleNonPlayingRelease() {
       case displaySequencerColors:
         handleSequencerColorsRelease();
         break;
+      case displayCustomLedsEditor:
+        handleCustomLedsEditorRelease();
+        break;
       default:
         return false;
     }
@@ -2062,7 +2082,11 @@ inline byte splitLowestEdge(byte split) {
 }
 
 inline boolean isLeftHandedSplit(byte split) {
-  return Device.otherHanded && (Device.splitHandedness == reversedBoth || (split == LEFT && Device.splitHandedness == reversedLeft) || (split == RIGHT && Device.splitHandedness == reversedRight));
+  return !userFirmwareActive &&
+    Device.otherHanded &&
+    (Device.splitHandedness == reversedBoth ||
+      (split == LEFT && Device.splitHandedness == reversedLeft) ||
+      (split == RIGHT && Device.splitHandedness == reversedRight));
 }
 
 // If split mode is on and the specified column is in the right split, returns RIGHT, otherwise LEFT.
